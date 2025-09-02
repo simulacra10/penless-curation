@@ -4,7 +4,8 @@ set -euo pipefail
 
 # -----------------------------------------------------------------------------
 # curate.sh - Plain text curation tool
-# Created by Norman Bauer - written by ChatGPT. 
+# Created by Norman Bauer - written by ChatGPT.
+# 	https://github.com/simulacra10/penless-curation 
 # Copyright (c) 2025 Norman Bauer
 #
 # Licensed under the MIT License. You may obtain a copy of the License at:
