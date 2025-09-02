@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
-
 # -----------------------------------------------------------------------------
 # curate.sh - Plain text curation tool
-# Created by Norman Bauer - written by ChatGPT.
-# 	https://github.com/simulacra10/penless-curation 
+#
 # Copyright (c) 2025 Norman Bauer
 #
 # Licensed under the MIT License. You may obtain a copy of the License at:
@@ -30,6 +26,7 @@ set -euo pipefail
 # SOFTWARE.
 # -----------------------------------------------------------------------------
 
+set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INBOX="${ROOT_DIR}/inbox.tsv"
@@ -50,11 +47,12 @@ Usage:
   ./curate.sh install-deps
   ./curate.sh export [YYYY-MM]
   ./curate.sh import <file.tsv|file.csv> [--format auto|tsv|csv]
-  ./curate.sh tui
   ./curate.sh rules [list|add|test] ...
+  ./curate.sh tui
+  ./curate.sh help
 
 Notes:
-  - TYPE ∈ {news, blog, video, link}.
+  - TYPE ∈ {news, blog, video, link}
   - inbox.tsv columns: date<TAB>type<TAB>url<TAB>title<TAB>tags
   - rules.tsv columns: domain<TAB>type<TAB>tags
 USAGE
@@ -67,7 +65,13 @@ ensure_dirs() {
   [[ -f "$RULES" ]] || touch "$RULES"
   if [[ ! -f "$HEADER_TPL" ]]; then
     cat > "$HEADER_TPL" <<'HDR'
-<!-- Optional header for monthly digests -->
+<!-- Monthly/Weekly Digest Header -->
+
+# Captain Contrary’s Digest
+
+Each entry was hand-picked and tagged for easy searching later.
+
+---
 HDR
   fi
 }
@@ -85,10 +89,9 @@ detect_type() {
 
 # -------- Title helpers --------
 html_title_curl() {
-  local url="$1"
-  local raw
+  local url="$1" raw
   raw="$(curl -Lfs --max-time 6 "$url" || true)"
-  echo "$raw" | tr '\n' ' ' | sed -n 's/.*<title[^>]*>\(.*\)<\/title>.*/\1/p' | sed 's/^[ \t]*//;s/[ \t]*$//'
+  printf "%s" "$raw" | tr '\n' ' ' | sed -n 's/.*<title[^>]*>\(.*\)<\/title>.*/\1/p' | sed 's/^[ \t]*//;s/[ \t]*$//'
 }
 
 html_title_lynx() {
@@ -97,11 +100,13 @@ html_title_lynx() {
 }
 
 best_title() {
-  local url="$1"
-  local title=""
+  local url="$1" title=""
   if is_cmd lynx; then title="$(html_title_lynx "$url")"; fi
   if [[ -z "$title" ]] && is_cmd curl; then title="$(html_title_curl "$url")"; fi
-  if [[ -z "$title" ]]; then local d="${url#*://}"; d="${d%%/*}"; title="$d"; fi
+  if [[ -z "$title" ]]; then
+    local d="${url#*://}"; d="${d%%/*}"
+    title="$d"
+  fi
   printf "%s" "$title"
 }
 
@@ -113,11 +118,8 @@ sanitize_field() {
 
 # -------- Domain parsing & rules --------
 url_domain() {
-  local url="$1"
-  local d="${url#*://}"
-  d="${d%%/*}"
-  # strip possible port
-  d="${d%%:*}"
+  local url="$1" d="${url#*://}"
+  d="${d%%/*}"; d="${d%%:*}"
   printf "%s" "$d"
 }
 
@@ -125,18 +127,14 @@ apply_rules() {
   local url="$1"; local cur_type="$2"; local tags_in="$3"
   local dom; dom="$(url_domain "$url")"
   local rule_type=""; local rule_tags=""
-  # match by suffix: if dom ends with rule domain
   if [[ -s "$RULES" ]]; then
     while IFS=$'\t' read -r rdom rtype rtags; do
-      [[ -z "$rdom" ]] && continue
-      # trim spaces
+      [[ -z "${rdom:-}" ]] && continue
       rdom="${rdom##[[:space:]]}"; rdom="${rdom%%[[:space:]]}"
       rtype="${rtype##[[:space:]]}"; rtype="${rtype%%[[:space:]]}"
       rtags="${rtags##[[:space:]]}"; rtags="${rtags%%[[:space:]]}"
       if [[ "$dom" == *"$rdom" ]]; then
-        rule_type="$rtype"
-        rule_tags="$rtags"
-        break
+        rule_type="$rtype"; rule_tags="$rtags"; break
       fi
     done < "$RULES"
   fi
@@ -149,30 +147,7 @@ apply_rules() {
   echo "$out_type|$out_tags"
 }
 
-# -------- Commands --------
-cmd_init() {
-  # Check for Python3 (needed for weekly digest date math)
-  if ! command -v python3 >/dev/null 2>&1; then
-    echo "Error: python3 is required but not found."
-    echo "Please install it and rerun ./curate.sh init"
-    echo
-    echo "Fedora/RHEL:"
-    echo "  sudo dnf install -y python3"
-    echo
-    echo "Debian/Ubuntu:"
-    echo "  sudo apt install -y python3"
-    exit 1
-  fi
-
-  ensure_dirs
-  touch "$INBOX" "$ARCHIVE" "$RULES"
-  mkdir -p "$NOTES_DIR" "$TEMPLATES_DIR"
-  if [[ ! -s "$HEADER_TPL" ]]; then
-    echo "<!-- Monthly/Weekly Digest Header -->" > "$HEADER_TPL"
-  fi
-  echo "Initialized curation project in $(pwd)"
-}
-
+# -------- Rendering helpers --------
 render_md_list() {
   awk -F'\t' '
   function domain(u,  d) { sub(/^https?:\/\//,"",u); split(u,a,"/"); d=a[1]; return d }
@@ -200,9 +175,8 @@ write_front_matter() {
 }
 
 write_digest() {
-  # period_id is either YYYY-MM (monthly) or YYYY-Www (weekly)
-  # mode: "monthly" or "weekly"
-  # When weekly, expect start_date and end_date as YYYY-MM-DD (inclusive)
+  # period_id: YYYY-MM (monthly) or YYYY-Www (weekly)
+  # mode: "monthly" or "weekly"; for weekly, provide start_date/end_date inclusive
   local period_id="$1"
   local kind="$2"
   local hugo="$3"
@@ -232,9 +206,7 @@ write_digest() {
     write_front_matter "$outfile" "${title_kind} ${period_id}" "$section"
   fi
 
-  if [[ -s "$HEADER_TPL" ]]; then
-    cat "$HEADER_TPL" >> "$outfile"
-  fi
+  if [[ -s "$HEADER_TPL" ]]; then cat "$HEADER_TPL" >> "$outfile"; fi
 
   local title_kind
   case "$kind" in
@@ -253,18 +225,103 @@ write_digest() {
       awk -F'\t' -v s="$start_date" -v e="$end_date" -v k="$kind" '$1>=s && $1<=e && $2==k' "$INBOX" | render_md_list >> "$outfile"
     fi
   else
-    # Monthly: match YYYY-MM prefix in the date field
     if [[ "$kind" == "all" ]]; then
       awk -F'\t' -v m="$period_id" '$1 ~ m' "$INBOX" | render_md_list >> "$outfile"
     else
       awk -F'\t' -v m="$period_id" -v k="$kind" '$1 ~ m && $2==k' "$INBOX" | render_md_list >> "$outfile"
     fi
   fi
-
   echo "Wrote: $outfile"
 }
 
+# -------- Commands --------
+cmd_init() {
+  # Check for Python3 (needed for weekly digest date math)
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "Error: python3 is required but not found."
+    echo "Please install it and rerun ./curate.sh init"
+    echo
+    echo "Fedora/RHEL:"
+    echo "  sudo dnf install -y python3"
+    echo
+    echo "Debian/Ubuntu:"
+    echo "  sudo apt install -y python3"
+    exit 1
+  fi
 
+  ensure_dirs
+  touch "$INBOX" "$ARCHIVE" "$RULES"
+  mkdir -p "$NOTES_DIR" "$TEMPLATES_DIR"
+  if [[ ! -s "$HEADER_TPL" ]]; then
+    echo "<!-- Monthly/Weekly Digest Header -->" > "$HEADER_TPL"
+  fi
+  echo "Initialized at $ROOT_DIR"
+}
+
+cmd_add() {
+  ensure_dirs
+  local type=""; local no_title="0"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -t|--type) type="${2:-}"; shift 2;;
+      --no-title) no_title="1"; shift;;
+      -h|--help) usage; exit 0;;
+      -*) echo "Unknown flag: $1" >&2; exit 1;;
+      *) break;;
+    esac
+  done
+  if [[ $# -lt 1 ]]; then echo "Missing URL" >&2; usage; exit 1; fi
+  local url="$1"; shift || true
+  local tags="${*:-}"
+
+  # Determine type (manual wins)
+  if [[ -z "$type" ]]; then type="$(detect_type "$url")"; fi
+
+  # Apply domain rules (manual type still wins; we just merge tags)
+  local merged; merged="$(apply_rules "$url" "$type" "$tags")"
+  local new_type="${merged%%|*}"
+  local new_tags="${merged#*|}"
+  if [[ -n "$type" && "$type" != "$(detect_type "$url")" ]]; then
+    new_type="$type"
+  fi
+
+  local title=""
+  if [[ "$no_title" == "0" ]]; then title="$(best_title "$url")"; fi
+  title="$(sanitize_field "$title")"
+  new_tags="$(sanitize_field "$new_tags")"
+
+  local date_iso; date_iso="$(date -u +%Y-%m-%d)"
+  printf "%s\t%s\t%s\t%s\t%s\n" "$date_iso" "$new_type" "$url" "$title" "$new_tags" >> "$INBOX"
+  echo "Added: $url"
+}
+
+cmd_clip() {
+  ensure_dirs
+  if ! is_cmd xclip; then
+    echo "xclip not found. Install it to use 'clip' (Fedora: sudo dnf install -y xclip)"; exit 1
+  fi
+  local url; url="$(xclip -o -selection clipboard)"
+  [[ -n "$url" ]] || { echo "Clipboard is empty."; exit 1; }
+  cmd_add "$url" "$@"
+}
+
+write_week_range_python() {
+  # Input: period_id like 2025-W36; outputs week_start and week_end (Mon..Sun)
+  local period_id="$1"
+  local start_py
+  start_py="$(python3 - <<'PY' "$period_id"
+import sys, datetime
+s = sys.argv[1]               # e.g., 2025-W36
+y, w = s.split('-W')
+d = datetime.date.fromisocalendar(int(y), int(w), 1)  # Monday
+print(d.isoformat())
+PY
+)"
+  local week_start="$start_py"
+  local week_end
+  week_end="$(date -d "${week_start} +6 days" +%Y-%m-%d)"
+  printf "%s|%s" "$week_start" "$week_end"
+}
 
 cmd_digest() {
   ensure_dirs
@@ -276,64 +333,41 @@ cmd_digest() {
   local week_start=""
   local week_end=""
 
-  # Parse flags (order-insensitive basic parser)
   local args=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --archive) archive="1"; shift ;;
-      --hugo) hugo="1"; shift ;;
-      --hugo-section) section="${2:-}"; shift 2 ;;
-      --weekly) weekly="1"; shift ;;
-      *) args+=("$1"); shift ;;
+      --archive) archive="1"; shift;;
+      --hugo) hugo="1"; shift;;
+      --hugo-section) section="${2:-}"; shift 2;;
+      --weekly) weekly="1"; shift;;
+      *) args+=("$1"); shift;;
     esac
   done
   set -- "${args[@]:-}"
 
-  # If an argument is provided, it may be YYYY-MM (monthly) or YYYY-Www (weekly).
   if [[ $# -ge 1 ]]; then
     if [[ "$1" =~ ^[0-9]{4}-[0-9]{2}$ ]]; then
-      period_id="$1"   # monthly
+      period_id="$1"   # monthly explicit
     elif [[ "$1" =~ ^[0-9]{4}-W[0-9]{2}$ ]]; then
-      weekly="1"
-      period_id="$1"   # weekly explicit
+      weekly="1"; period_id="$1"
     else
-      period_id=""     # unknown format; will default below
+      period_id=""
     fi
   fi
 
   if [[ "$weekly" == "1" ]]; then
-    # Determine ISO week id if not given
-    if [[ -z "$period_id" ]]; then
-      period_id="$(date +%G-W%V)"
+    [[ -n "$period_id" ]] || period_id="$(date +%G-W%V)"
+    if ! command -v python3 >/dev/null 2>&1; then
+      echo "Error: python3 is required for --weekly date math."; exit 1
     fi
-    # Compute start (Mon) and end (Sun) dates for the ISO week
-    # Requires GNU date (Fedora has it).
-   # NEW: robust ISO week → Monday (requires python3)
-if command -v python3 >/dev/null 2>&1; then
-  week_start="$(
-    python3 - <<'PY' "$period_id"
-import sys, datetime
-s = sys.argv[1]            # e.g. '2025-W36'
-y, w = s.split('-W')
-d = datetime.date.fromisocalendar(int(y), int(w), 1)  # Monday=1
-print(d.isoformat())
-PY
-  )"
-else
-  echo "Error: python3 is required for --weekly date math." >&2
-  exit 1
-fi
-week_end="$(date -d "${week_start} +6 days" +%Y-%m-%d)"
-
+    local range; range="$(write_week_range_python "$period_id")"
+    week_start="${range%%|*}"; week_end="${range#*|}"
 
     for k in news blog video link all; do
       write_digest "$period_id" "$k" "$hugo" "$section" "weekly" "$week_start" "$week_end"
     done
   else
-    # Monthly mode (default)
-    if [[ -z "$period_id" ]]; then
-      period_id="$(date +%Y-%m)"
-    fi
+    [[ -n "$period_id" ]] || period_id="$(date +%Y-%m)"
     for k in news blog video link all; do
       write_digest "$period_id" "$k" "$hugo" "$section" "monthly"
     done
@@ -372,17 +406,17 @@ cmd_install_deps() {
   else
     echo "Unknown package manager. Please install manually: curl lynx xclip"
   fi
-  echo "fzf (TUI) is optional; install via your package manager if desired."
+  echo "Optional: fzf for the TUI (sudo dnf install -y fzf)"
 }
 
 cmd_export() {
   ensure_dirs
-  local yymm
-  if [[ $# -ge 1 && "$1" =~ ^[0-9]{4}-[0-9]{2}$ ]]; then yymm="$1"; else yymm=""; fi
+  local period=""
+  if [[ $# -ge 1 && "$1" =~ ^[0-9]{4}-[0-9]{2}$ ]]; then period="$1"; else period=""; fi
   echo "["
   local first=1
   while IFS=$'\t' read -r date type url title tags; do
-    if [[ -n "$yymm" && "$date" != "$yymm"* ]]; then continue; fi
+    if [[ -n "$period" && "$date" != "$period"* ]]; then continue; fi
     [[ $first -eq 0 ]] && echo ","
     printf "  {\"date\":\"%s\",\"type\":\"%s\",\"url\":\"%s\",\"title\":%s,\"tags\":%s}" \
       "$date" "$type" "$url" \
@@ -399,20 +433,11 @@ cmd_import() {
   local file="$1"; shift || true
   local fmt="auto"
   if [[ "${1:-}" == "--format" ]]; then fmt="${2:-auto}"; shift 2; fi
-
   if [[ "$fmt" == "auto" ]]; then
     if [[ "$file" == *.tsv ]]; then fmt="tsv"; else fmt="csv"; fi
   fi
-
-  local IFS_SAVE="$IFS"
-  if [[ "$fmt" == "tsv" ]]; then
-    local sep=$'\t'
-  else
-    local sep=','
-  fi
-
+  local IFS_SAVE="$IFS"; local sep=$'\t'; [[ "$fmt" == "csv" ]] && sep=','
   local today; today="$(date -u +%Y-%m-%d)"
-
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ -z "$line" ]] && continue
     if [[ "$line" =~ [Uu][Rr][Ll] ]] && [[ ! "$line" =~ ^https?:// ]]; then continue; fi
@@ -425,7 +450,6 @@ cmd_import() {
     local date="${c1:-$today}"; local type="${c2:-}"; local url="${c3:-}"; local title="${c4:-}"; local tags="${c5:-}"
     [[ -n "$url" ]] || continue
     [[ -n "$type" ]] || type="$(detect_type "$url")"
-    # apply rules during import too
     local merged; merged="$(apply_rules "$url" "$type" "$tags")"
     local new_type="${merged%%|*}"; local new_tags="${merged#*|}"
     title="$(sanitize_field "$title")"; new_tags="$(sanitize_field "$new_tags")"
@@ -465,12 +489,11 @@ cmd_rules() {
   esac
 }
 
-# Minimal TUI wrapper kept from v3 (optional fzf)
 cmd_tui() {
   ensure_dirs
   if ! is_cmd fzf; then echo "fzf not found. Install it to use the TUI."; exit 1; fi
   local choice
-  choice="$(printf "Add from clipboard\nAdd manual URL\nSearch inbox\nDigest (this month)\nDigest & Archive (this month)\nRules list\nRules add\nRules test URL\nQuit\n" | fzf --prompt="penless » " --height=50% --border)"
+  choice="$(printf "Add from clipboard\nAdd manual URL\nSearch inbox\nDigest (this week)\nDigest (this month)\nDigest & Archive (this week)\nRules list\nRules add\nRules test URL\nQuit\n" | fzf --prompt="penless » " --height=50% --border)"
   case "$choice" in
     "Add from clipboard")
       read -rp "Tags (space-separated, optional): " tags
@@ -485,11 +508,14 @@ cmd_tui() {
       read -rp "Pattern: " pat
       ./curate.sh search "$pat" | less -R
       ;;
+    "Digest (this week)")
+      ./curate.sh digest --weekly
+      ;;
     "Digest (this month)")
       ./curate.sh digest
       ;;
-    "Digest & Archive (this month)")
-      ./curate.sh digest --archive
+    "Digest & Archive (this week)")
+      ./curate.sh digest --weekly --archive
       ;;
     "Rules list")
       ./curate.sh rules list | less
@@ -501,8 +527,8 @@ cmd_tui() {
       ./curate.sh rules add "$dom" $typ $tags
       ;;
     "Rules test URL")
-      read -rp "URL: " url
-      ./curate.sh rules test "$url"
+      read -rp "URL: " u
+      ./curate.sh rules test "$u"
       ;;
     *)
       echo "Bye."
@@ -511,18 +537,18 @@ cmd_tui() {
 }
 
 main() {
-  local cmd="${1:-}"
+  local cmd="${1:-}"; shift || true
   case "${cmd:-}" in
-    init) shift; cmd_init "$@";;
-    add) shift; cmd_add "$@";;
-    clip) shift; cmd_clip "$@";;
-    digest) shift; cmd_digest "$@";;
-    search) shift; cmd_search "$@";;
-    install-deps) shift; cmd_install_deps "$@";;
-    export) shift; cmd_export "$@";;
-    import) shift; cmd_import "$@";;
-    rules) shift; cmd_rules "$@";;
-    tui) shift; cmd_tui "$@";;
+    init) cmd_init "$@";;
+    add) cmd_add "$@";;
+    clip) cmd_clip "$@";;
+    digest) cmd_digest "$@";;
+    search) cmd_search "$@";;
+    install-deps) cmd_install_deps "$@";;
+    export) cmd_export "$@";;
+    import) cmd_import "$@";;
+    rules) cmd_rules "$@";;    # NOTE: shift before calling (fixed)
+    tui) cmd_tui "$@";;
     ""|-h|--help|help) usage;;
     *) echo "Unknown command: $cmd" >&2; usage; exit 1;;
   esac
