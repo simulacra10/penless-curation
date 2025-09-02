@@ -1,0 +1,14 @@
+--- a/curate.sh
++++ b/curate.sh
+@@ -417,7 +417,7 @@ main() {
+     search) shift; cmd_search "$@";;
+     install-deps) shift; cmd_install_deps "$@";;
+     export) shift; cmd_export "$@";;
+-    import) shift; cmd_import "$@";;
+-    rules) cmd_rules "$@";;
++    import) shift; cmd_import "$@";;
++    rules) shift; cmd_rules "$@";;
+     tui) shift; cmd_tui "$@";;
+     ""|-h|--help|help) usage;;
+     *) echo "Unknown command: $cmd" >&2; usage; exit 1;;
+
