@@ -45,7 +45,7 @@ Usage:
   ./curate.sh init
   ./curate.sh add [-t TYPE] [--no-title] URL [TAGS...]
   ./curate.sh clip [TAGS...]
-  ./curate.sh digest [YYYY-MM] [--archive] [--hugo] [--hugo-section SECTION]
+  ./curate.sh digest [YYYY-MM | YYYY-Www] [--weekly] [--archive] [--hugo] [--hugo-section SECTION]
   ./curate.sh search <pattern>
   ./curate.sh install-deps
   ./curate.sh export [YYYY-MM]
@@ -215,67 +215,156 @@ write_front_matter() {
 }
 
 write_digest() {
-  local yymm="$1"; local kind="$2"; local hugo="$3"; local section="$4"
+  # period_id is either YYYY-MM (monthly) or YYYY-Www (weekly)
+  # mode: "monthly" or "weekly"
+  # When weekly, expect start_date and end_date as YYYY-MM-DD (inclusive)
+  local period_id="$1"
+  local kind="$2"
+  local hugo="$3"
+  local section="$4"
+  local mode="${5:-monthly}"
+  local start_date="${6:-}"
+  local end_date="${7:-}"
+
   local outfile
-  if [[ "$kind" == "all" ]]; then outfile="${NOTES_DIR}/all-${yymm}.md"; else outfile="${NOTES_DIR}/${kind}s-${yymm}.md"; fi
+  if [[ "$kind" == "all" ]]; then
+    outfile="${NOTES_DIR}/all-${period_id}.md"
+  else
+    outfile="${NOTES_DIR}/${kind}s-${period_id}.md"
+  fi
 
   : > "$outfile"
+
   if [[ "$hugo" == "1" ]]; then
     local title_kind
     case "$kind" in
-      news)  title_kind="News";;
-      blog)  title_kind="Blogs";;
-      video) title_kind="Videos";;
-      link)  title_kind="Links";;
-      all)   title_kind="All Items";;
+      news)  title_kind="News" ;;
+      blog)  title_kind="Blogs" ;;
+      video) title_kind="Videos" ;;
+      link)  title_kind="Links" ;;
+      all)   title_kind="All Items" ;;
     esac
-    write_front_matter "$outfile" "${title_kind} ${yymm}" "$section"
+    write_front_matter "$outfile" "${title_kind} ${period_id}" "$section"
   fi
 
-  if [[ -s "$HEADER_TPL" ]]; then cat "$HEADER_TPL" >> "$outfile"; fi
+  if [[ -s "$HEADER_TPL" ]]; then
+    cat "$HEADER_TPL" >> "$outfile"
+  fi
 
   local title_kind
   case "$kind" in
-    news)  title_kind="News";;
-    blog)  title_kind="Blogs";;
-    video) title_kind="Videos";;
-    link)  title_kind="Links";;
-    all)   title_kind="All Items";;
+    news)  title_kind="News" ;;
+    blog)  title_kind="Blogs" ;;
+    video) title_kind="Videos" ;;
+    link)  title_kind="Links" ;;
+    all)   title_kind="All Items" ;;
   esac
-  printf "# %s %s\n\n" "$title_kind" "$yymm" >> "$outfile"
+  printf "# %s %s\n\n" "$title_kind" "$period_id" >> "$outfile"
 
-  if [[ "$kind" == "all" ]]; then
-    awk -F'\t' -v m="$yymm" '$1 ~ m' "$INBOX" | render_md_list >> "$outfile"
+  if [[ "$mode" == "weekly" && -n "$start_date" && -n "$end_date" ]]; then
+    if [[ "$kind" == "all" ]]; then
+      awk -F'\t' -v s="$start_date" -v e="$end_date" '$1>=s && $1<=e' "$INBOX" | render_md_list >> "$outfile"
+    else
+      awk -F'\t' -v s="$start_date" -v e="$end_date" -v k="$kind" '$1>=s && $1<=e && $2==k' "$INBOX" | render_md_list >> "$outfile"
+    fi
   else
-    awk -F'\t' -v m="$yymm" -v k="$kind" '$1 ~ m && $2==k' "$INBOX" | render_md_list >> "$outfile"
+    # Monthly: match YYYY-MM prefix in the date field
+    if [[ "$kind" == "all" ]]; then
+      awk -F'\t' -v m="$period_id" '$1 ~ m' "$INBOX" | render_md_list >> "$outfile"
+    else
+      awk -F'\t' -v m="$period_id" -v k="$kind" '$1 ~ m && $2==k' "$INBOX" | render_md_list >> "$outfile"
+    fi
   fi
+
   echo "Wrote: $outfile"
 }
 
+
+
 cmd_digest() {
   ensure_dirs
-  local yymm; local archive="0"; local hugo="0"; local section=""
+  local period_id=""
+  local archive="0"
+  local hugo="0"
+  local section=""
+  local weekly="0"
+  local week_start=""
+  local week_end=""
+
+  # Parse flags (order-insensitive basic parser)
   local args=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --archive) archive="1"; shift;;
-      --hugo) hugo="1"; shift;;
-      --hugo-section) section="${2:-}"; shift 2;;
-      *) args+=("$1"); shift;;
+      --archive) archive="1"; shift ;;
+      --hugo) hugo="1"; shift ;;
+      --hugo-section) section="${2:-}"; shift 2 ;;
+      --weekly) weekly="1"; shift ;;
+      *) args+=("$1"); shift ;;
     esac
   done
   set -- "${args[@]:-}"
-  if [[ $# -ge 1 && "$1" =~ ^[0-9]{4}-[0-9]{2}$ ]]; then yymm="$1"; else yymm="$(date +%Y-%m)"; fi
 
-  for k in news blog video link all; do
-    write_digest "$yymm" "$k" "$hugo" "$section"
-  done
+  # If an argument is provided, it may be YYYY-MM (monthly) or YYYY-Www (weekly).
+  if [[ $# -ge 1 ]]; then
+    if [[ "$1" =~ ^[0-9]{4}-[0-9]{2}$ ]]; then
+      period_id="$1"   # monthly
+    elif [[ "$1" =~ ^[0-9]{4}-W[0-9]{2}$ ]]; then
+      weekly="1"
+      period_id="$1"   # weekly explicit
+    else
+      period_id=""     # unknown format; will default below
+    fi
+  fi
+
+  if [[ "$weekly" == "1" ]]; then
+    # Determine ISO week id if not given
+    if [[ -z "$period_id" ]]; then
+      period_id="$(date +%G-W%V)"
+    fi
+    # Compute start (Mon) and end (Sun) dates for the ISO week
+    # Requires GNU date (Fedora has it).
+   # NEW: robust ISO week → Monday (requires python3)
+if command -v python3 >/dev/null 2>&1; then
+  week_start="$(
+    python3 - <<'PY' "$period_id"
+import sys, datetime
+s = sys.argv[1]            # e.g. '2025-W36'
+y, w = s.split('-W')
+d = datetime.date.fromisocalendar(int(y), int(w), 1)  # Monday=1
+print(d.isoformat())
+PY
+  )"
+else
+  echo "Error: python3 is required for --weekly date math." >&2
+  exit 1
+fi
+week_end="$(date -d "${week_start} +6 days" +%Y-%m-%d)"
+
+
+    for k in news blog video link all; do
+      write_digest "$period_id" "$k" "$hugo" "$section" "weekly" "$week_start" "$week_end"
+    done
+  else
+    # Monthly mode (default)
+    if [[ -z "$period_id" ]]; then
+      period_id="$(date +%Y-%m)"
+    fi
+    for k in news blog video link all; do
+      write_digest "$period_id" "$k" "$hugo" "$section" "monthly"
+    done
+  fi
 
   if [[ "$archive" == "1" ]]; then
     tmp="$(mktemp)"
-    awk -F'\t' -v m="$yymm" '$1 ~ m {print > "'"$ARCHIVE"'"; next} {print > "'"$tmp"'"}' "$INBOX"
-    mv "$tmp" "$INBOX"
-    echo "Archived entries for $yymm -> $ARCHIVE"
+    if [[ "$weekly" == "1" ]]; then
+      awk -F'\t' -v s="$week_start" -v e="$week_end" '$1>=s && $1<=e {print > "'"$ARCHIVE"'"; next} {print > "'"$tmp"'"}' "$INBOX"
+      mv "$tmp" "$INBOX"
+      echo "Archived entries for $period_id ($week_start..$week_end) -> $ARCHIVE"
+    else
+      awk -F'\t' -v m="$period_id" '$1 ~ m {print > "'"$ARCHIVE"'"; next} {print > "'"$tmp"'"}' "$INBOX"
+      mv "$tmp" "$INBOX"
+      echo "Archived entries for $period_id -> $ARCHIVE"
+    fi
   fi
 }
 
