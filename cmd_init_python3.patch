@@ -1,0 +1,59 @@
+--- curate.sh
++++ curate.sh
+@@ -1,37 +1,22 @@
+-cmd_init() { ensure_dirs; echo "Initialized at $ROOT_DIR"; }
+-
+-cmd_add() {
+-  ensure_dirs
+-  local type=""; local no_title="0"
+-  while [[ $# -gt 0 ]]; do
+-    case "$1" in
+-      -t|--type) type="${2:-}"; shift 2;;
+-      --no-title) no_title="1"; shift;;
+-      -h|--help) usage; exit 0;;
+-      -*) echo "Unknown flag: $1" >&2; exit 1;;
+-      *) break;;
+-    esac
+-  done
+-  if [[ $# -lt 1 ]]; then echo "Missing URL" >&2; usage; exit 1; fi
+-  local url="$1"; shift || true
+-  local tags="${*:-}"
+-
+-  # Determine type (manual wins)
+-  if [[ -z "$type" ]]; then type="$(detect_type "$url")"; fi
+-
+-  # Apply domain rules (unless manual -t provided; but spec says manual wins; we still merge tags)
+-  local merged; merged="$(apply_rules "$url" "$type" "$tags")"
+-  local new_type="${merged%%|*}"
+-  local new_tags="${merged#*|}"
+-  if [[ -n "$type" && "$type" != "$(detect_type "$url")" ]]; then
+-    # user supplied type explicitly; keep it (but keep rule tags)
+-    new_type="$type"
++cmd_init() {
++  # Check for Python3 (needed for weekly digest date math)
++  if ! command -v python3 >/dev/null 2>&1; then
++    echo "Error: python3 is required but not found."
++    echo "Please install it and rerun ./curate.sh init"
++    echo
++    echo "Fedora/RHEL:"
++    echo "  sudo dnf install -y python3"
++    echo
++    echo "Debian/Ubuntu:"
++    echo "  sudo apt install -y python3"
++    exit 1
+   fi
+ 
+-  local title=""; if [[ "$no_title" == "0" ]]; then title="$(best_title "$url")"; fi
+-  title="$(sanitize_field "$title")"; new_tags="$(sanitize_field "$new_tags")"
+-
+-  local date_iso; date_iso="$(date -u +%Y-%m-%d)"
+-  printf "%s\t%s\t%s\t%s\t%s\n" "$date_iso" "$new_type" "$url" "$title" "$new_tags" >> "$INBOX"
+-  echo "Added: $url"
++  ensure_dirs
++  touch "$INBOX" "$ARCHIVE" "$RULES"
++  mkdir -p "$NOTES_DIR" "$TEMPLATES_DIR"
++  if [[ ! -s "$HEADER_TPL" ]]; then
++    echo "<!-- Monthly/Weekly Digest Header -->" > "$HEADER_TPL"
++  fi
++  echo "Initialized curation project in $(pwd)"
+ }

@@ -5,6 +5,30 @@ No databases, no bloat: just `bash`, `tsv`, and `markdown`.
 
 ---
 
+## 📦 Requirements
+
+The script uses only core utilities plus a few extras:
+
+- **bash** (5.0+ recommended)
+- **awk**, **grep**, **sed**, **date** (GNU coreutils assumed)
+- **python3** (for ISO week date calculations in weekly digests)
+- **lynx** or **curl** (for fetching `<title>` text from URLs)
+- **xclip** (optional; required for `curate.sh clip`)
+- **fzf** (optional; required for `curate.sh tui`)
+- **pandoc** (optional; for exporting Markdown to HTML/PDF)
+- **wkhtmltopdf** (optional; for HTML → PDF conversions)
+- **git** (optional; for versioning and backups)
+
+### Install on Fedora/RHEL
+```bash
+sudo dnf install -y bash coreutils gawk grep sed python3 curl lynx xclip fzf pandoc wkhtmltopdf git
+```
+
+### Install on Debian/Ubuntu
+```bash
+sudo apt install -y bash coreutils gawk grep sed python3 curl lynx xclip fzf pandoc wkhtmltopdf git
+```
+
 ## 📂 Project Layout
 
 ```
