@@ -85,6 +85,16 @@ cat inbox.tsv
 
 # view
 less notes/all-2025-09.md
+
+# Weekly digest to Markdown + HTML
+./curate.sh digest --weekly -pd
+
+# Specific week, Hugo front matter, archive, and HTML
+./curate.sh digest 2025-W36 --weekly --hugo --hugo-section curation --archive -pd
+
+# Monthly digest with HTML
+./curate.sh digest -pd
+
 ```
 
 ---
