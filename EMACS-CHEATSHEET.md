@@ -1,7 +1,7 @@
+# Emacs Cheat Sheet for `inbox.tsv` (Penless Curation — C++ Edition)
 
-# Emacs Cheat Sheet for `inbox.tsv` (Penless Curation)
-
-File format: `date<TAB>type<TAB>url<TAB>title<TAB>tags`
+File format: `date<TAB>type<TAB>url<TAB>title<TAB>tags`  
+**Tip:** Prefer tags with a leading `#` (e.g. `#YouTube #linux`).
 
 ---
 
@@ -21,7 +21,7 @@ Show tabs visibly:
 ---
 
 ## Editing Lines
-- `C-k` → Kill line (like `dd` in Vim)
+- `C-k` → Kill line
 - `C-y` → Yank (paste)
 - `C-/` or `C-x u` → Undo
 
@@ -44,18 +44,18 @@ M-x keep-lines RET fedora RET
 
 ---
 
-## Tag Editing
-- Add tag at end of lines:
+## Tag Editing (recommend `#`-prefixed tokens)
+- Add a tag at end of lines:
 ```
-M-x query-replace-regexp RET $ RET  bushcraft RET
+M-x query-replace-regexp RET $ RET  #bushcraft RET
 ```
-- Add tag only to lines with youtube:
+- Add tag only to lines with `youtube` in the URL:
 ```
-M-x query-replace-regexp RET \(youtube.*\)$ RET \1 yt RET
+M-x query-replace-regexp RET \(youtube[^\t]*\)$ RET \1 #YouTube RET
 ```
 - Replace tag everywhere:
 ```
-M-x query-replace-regexp RET \byt\b RET youtube RET
+M-x query-replace-regexp RET \b#yt\b RET #YouTube RET
 ```
 
 ---
@@ -76,7 +76,7 @@ M-x query-replace-regexp RET \byt\b RET youtube RET
 ---
 
 ## Search with Grep / Ripgrep
-- `M-x rgrep RET youtube RET *.tsv RET .`
+- `M-x rgrep RET youtube.com RET *.tsv RET .`
 - Navigate matches with `n` / `p`
 
 ---
@@ -94,4 +94,13 @@ Then use:
 
 ---
 
-✅ Mirrors the Vim workflow: mass edits, sorting, deduplication, tagging, and clean column view.
+## Digest Format (for reference)
+
+Digest bullets (rendered by `curate digest`) use **no date** and look like:
+```md
+- [domain](url) — *kind* — Title — #Tag1 #Tag2
+```
+Example:
+```md
+- [youtube.com](https://www.youtube.com/watch?v=b40RW38xMXs) — *video* — WHOA!! Bodycam EXPOSES this "GOOD COP" as Being REALLY BAD after Walking Away from Auditor - YouTube — #YouTube
+```

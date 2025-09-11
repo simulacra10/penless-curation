@@ -1,7 +1,7 @@
+# Vim Cheat Sheet for `inbox.tsv` (Penless Curation — C++ Edition)
 
-# Vim Cheat Sheet for `inbox.tsv` (Penless Curation)
-
-This file format is: `date<TAB>type<TAB>url<TAB>title<TAB>tags`.
+This file format is: `date<TAB>type<TAB>url<TAB>title<TAB>tags`.  
+**Tip:** Prefer `#`‑prefixed tags (e.g. `#YouTube #linux`).
 
 ---
 
@@ -37,18 +37,18 @@ This file format is: `date<TAB>type<TAB>url<TAB>title<TAB>tags`.
 
 ---
 
-## Tag Editing
-- Add tag `bushcraft` to all lines:
+## Tag Editing (recommend `#`-prefixed tokens)
+- Add tag `#bushcraft` to all lines:
   ```
-  :%s/$/ bushcraft/
+  :%s/$/ #bushcraft/
   ```
-- Add tag only to YouTube lines:
+- Add tag only to lines with YouTube in the URL:
   ```
-  :g/youtube/s/$/ yt/
+  :g/youtube/s/$/ #YouTube/
   ```
-- Replace tag `yt` with `youtube`:
+- Replace tag `#yt` with `#YouTube`:
   ```
-  :%s/\<yt\>/youtube/g
+  :%s/\<#yt\>/#YouTube/g
   ```
 
 ---
@@ -65,15 +65,7 @@ This file format is: `date<TAB>type<TAB>url<TAB>title<TAB>tags`.
 
 ---
 
-## Quick Macros
-- Record macro `a`: `qa`
-- Do edits on first line
-- Stop: `q`
-- Apply to next 10 lines: `10@a`
-
----
-
-## Grep Inside Vim (requires ripgrep)
+## Grep Inside Vim (with ripgrep)
 Add to `~/.vimrc`:
 ```vim
 set grepprg=rg\ --vimgrep
@@ -87,14 +79,13 @@ Open results: `:copen`, move with `:cn` / `:cp`.
 
 ---
 
-## TSV File Settings (Optional)
-Create `~/.vim/after/ftplugin/tsv.vim` with:
-```vim
-setlocal noexpandtab
-setlocal nowrap
-setlocal list listchars=tab:»·,trail:·
+## Digest Format (for reference)
+
+Digest bullets (rendered by `curate digest`) use **no date** and look like:
+```md
+- [domain](url) — *kind* — Title — #Tag1 #Tag2
 ```
-
----
-
-✅ Keep it plain: fast edits, instant fixes, no bloat.
+Example:
+```md
+- [youtube.com](https://www.youtube.com/watch?v=b40RW38xMXs) — *video* — WHOA!! Bodycam EXPOSES this "GOOD COP" as Being REALLY BAD after Walking Away from Auditor - YouTube — #YouTube
+```

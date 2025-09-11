@@ -1,233 +1,271 @@
-# Penless Curation v4 — Comprehensive README
+# Penless Curation — C++ Edition
 
-A plain-text system for capturing links, tagging them, and rolling them into monthly digests.  
-No databases, no bloat: just `bash`, `tsv`, and `markdown`.  
+A plain‑text workflow for capturing links to `inbox.tsv`, tagging them, and rolling them into weekly (or custom range) digests.  
+No databases, no runtimes — just a tiny C++20 CLI, TSV, and Markdown/HTML.
+
+---
+
+## ✅ What’s new in this edition
+
+- Rewritten as a **single C++20 binary**: `curate`
+- **Digest format** (per item): no date, domain as link text, kind, then title and tags:
+  ```md
+  - [youtube.com](https://www.youtube.com/watch?v=b40RW38xMXs) — *video* — WHOA!! Bodycam ... — #YouTube
+  ```
+- **Default output**: `curate digest` writes into `digests/<range>.md` (or `.html` with `-pd`)
+- Use `-o -` to force **stdout**
 
 ---
 
 ## 📦 Requirements
 
-The script uses only core utilities plus a few extras:
+- A C++20 compiler (GCC 12+/Clang 14+). Example build on Fedora:
+  ```bash
+  g++ -std=c++20 -O2 -o curate curate.cpp
+  ```
 
-- **bash** (5.0+ recommended)
-- **awk**, **grep**, **sed**, **date** (GNU coreutils assumed)
-- **python3** (for ISO week date calculations in weekly digests)
-- **lynx** or **curl** (for fetching `<title>` text from URLs)
-- **xclip** (optional; required for `curate.sh clip`)
-- **fzf** (optional; required for `curate.sh tui`)
-- **pandoc** (optional; for exporting Markdown to HTML/PDF)
-- **wkhtmltopdf** (optional; for HTML → PDF conversions)
-- **git** (optional; for versioning and backups)
+Optional:
+- `pandoc` (only if you want to post‑process Markdown yourself; **not required** because `-pd` emits HTML)
+- `git` for versioning/backups
 
-### Install on Fedora/RHEL
-```bash
-sudo dnf install -y bash coreutils gawk grep sed python3 curl lynx xclip fzf pandoc wkhtmltopdf git
-```
-
-### Install on Debian/Ubuntu
-```bash
-sudo apt install -y bash coreutils gawk grep sed python3 curl lynx xclip fzf pandoc wkhtmltopdf git
-```
+---
 
 ## 📂 Project Layout
 
 ```
-penless-curation-v4/
-├── curate.sh              # main script (all commands live here)
-├── inbox.tsv              # your raw capture inbox (tab-separated)
-├── archive.tsv            # optional archive of processed items
-├── rules.tsv              # domain → type/tags mapping
-├── notes/                 # generated digests (Markdown)
+penless-curation/
+├── curate.cpp             # source (this repo)
+├── curate                 # compiled binary
+├── inbox.tsv              # raw capture inbox (tab-separated; 5 cols)
 ├── templates/
-│   └── monthly_header.md  # inserted at top of each digest
-└── README-v4.md           # this guide
+│   └── header.md          # optional header inserted at top of digests
+├── digests/               # generated digests (default output)
+└── archive/               # created by 'clear-inbox' for rotating inbox
 ```
 
-### File explanations
-- **`curate.sh`**: main entrypoint. Handles adding, digesting, searching, rules, imports/exports, and TUI.
-- **`inbox.tsv`**: everything you capture lands here. Format:  
+### File formats
+
+- **`inbox.tsv`** — **five** tab‑separated columns:
   ```
   date<TAB>type<TAB>url<TAB>title<TAB>tags
   ```
-- **`archive.tsv`**: when you run `digest --archive`, items for that month are moved here to keep `inbox.tsv` fresh.
-- **`rules.tsv`**: lets you define domain-based rules so classification and tags are automatic.  
-  Example line:  
+  Tags are stored as tokens, typically **prefixed with `#`** (e.g. `#YouTube #linux`).  
+  The `curate add` command will auto‑prefix `#` for you; if you manually edit, prefer including the `#`.
+
+- **Digest (.md/.html)** — each entry is rendered as:
+  ```md
+  - [domain](url) — *kind* — Title — #Tag1 #Tag2
   ```
-  youtube.com    video    yt
-  ```
-- **`notes/`**: your digests. Every `digest` run creates Markdown files (news/blogs/videos/links/all).
-- **`templates/monthly_header.md`**: optional boilerplate added to top of digests (edit or delete as you like).
-- **`README-v4.md`**: this guide.
 
 ---
 
 ## 🚀 Quick Start
 
 ```bash
-# unpack
-unzip penless-curation-v4.zip -d ~/penless-curation
-cd ~/penless-curation/penless-curation-v4
+# Build
+g++ -std=c++20 -O2 -o curate curate.cpp
 
-# set up directories/files
-./curate.sh init
+# (Optional) choose a home folder; default is current directory
+export CURATE_HOME="$HOME/penless-curation"
 
-# add a rule so YouTube is always video + yt tag
-./curate.sh rules add youtube.com video yt
+# First run conveniences
+mkdir -p "$CURATE_HOME/templates" "$CURATE_HOME/digests"
+[ -f "$CURATE_HOME/templates/header.md" ] || printf "# Weekly Curation\n\n" > "$CURATE_HOME/templates/header.md"
+[ -f "$CURATE_HOME/inbox.tsv" ] || : > "$CURATE_HOME/inbox.tsv"
 
-# capture a link
-./curate.sh add "https://www.youtube.com/watch?v=L1S0SiBuJN8" bushcraft
+# Capture a link
+./curate add "https://www.youtube.com/watch?v=b40RW38xMXs" #YouTube
 
-# see inbox
-cat inbox.tsv
+# Build this week's digest (Markdown written to digests/2025-W37.md)
+./curate digest -gt
 
-# build this month’s digest
-./curate.sh digest
+# HTML instead (written to digests/2025-W37.html)
+./curate digest -gt -pd
 
-# view
-less notes/all-2025-09.md
+# Custom date range (auto filename digests/2025-09-01_to_2025-09-07.md)
+./curate digest --start 2025-09-01 --end 2025-09-07
 
-# Weekly digest to Markdown + HTML
-./curate.sh digest --weekly -pd
-
-# Specific week, Hugo front matter, archive, and HTML
-./curate.sh digest 2025-W36 --weekly --hugo --hugo-section curation --archive -pd
-
-# Monthly digest with HTML
-./curate.sh digest -pd
-
+# Force stdout (legacy behavior)
+./curate digest -gt -pd -o -
 ```
 
 ---
 
-## 🔑 Core Commands
+## 🧰 Commands
 
-### Initialize
-```bash
-./curate.sh init
+```text
+curate add <url> [tags...] [--title "..."] [--date YYYY-MM-DD]
+curate digest [-gt|--group-tags] [--tags-only] [-pd]
+              [--week YYYY-Www | --start YYYY-MM-DD --end YYYY-MM-DD]
+              [--no-header] [-o <path>|-]
+curate clear-inbox [--archive-dir <dir>]
+curate list [--limit N] [--since YYYY-MM-DD] [--until YYYY-MM-DD]
+curate help | -h | --help
 ```
-Creates `inbox.tsv`, `archive.tsv`, `rules.tsv`, and directories if missing.
 
----
-
-### Add
-```bash
-./curate.sh add URL [tags...]
-./curate.sh add -t TYPE URL [tags...]
-```
-- Fetches `<title>` (via lynx or curl).
-- Detects type: `news`, `blog`, `video`, `link` (rules may override).
-- Appends to `inbox.tsv`.
+### `add`
+- Appends a line to `inbox.tsv` (5 columns).  
+- Type is auto‑detected from URL (`video`, `tweet`, `post`, `thread`, `hn`, `code`, `pdf`, `article`).  
+- Tags you pass without `#` are auto‑prefixed on write.
 
 Examples:
 ```bash
-./curate.sh add "https://fedoramagazine.org/post" linux fedora
-./curate.sh add -t blog "https://substack.com/somepost" newsletter
+./curate add "https://substack.com/p/example" #Newsletter #AI
+./curate add "https://github.com/user/repo" --title "Cool lib" #C++
+./curate add "https://example.com" #tag1 tag2               # becomes "#tag1 #tag2"
+```
+
+### `digest`
+- Builds a digest for a **week** (default: current ISO week) or a **custom range**.  
+- Default output location if `-o` not specified:
+  - `digests/<YYYY-Www>.md` (Markdown) or
+  - `digests/<YYYY-Www>.html` (with `-pd`)
+- For custom ranges: `digests/YYYY-MM-DD_to_YYYY-MM-DD.md`
+
+Useful flags:
+- `-gt, --group-tags` → add a “By Tag” section
+- `--tags-only` → only the “By Tag” section (skip “All Items”)
+- `-pd` → emit self‑contained HTML (no external CSS/JS)
+- `--no-header` → don’t include `templates/header.md`
+- `-o -` → force stdout
+
+### `clear-inbox`
+- Rotates `inbox.tsv` into `archive/inbox-<timestamp>.tsv` and creates a fresh empty `inbox.tsv`.
+- Use `--archive-dir <dir>` to override archive location.
+
+### `list`
+- Prints lines from `inbox.tsv` with optional filtering by date range and limit.
+
+---
+
+## 📝 Digest Entry Format (Important)
+
+The digest uses **no date** in each bullet. The exact format is:
+
+```
+- [domain](url) — *kind* — Title — #Tag1 #Tag2
+```
+
+Example:
+
+```
+- [youtube.com](https://www.youtube.com/watch?v=b40RW38xMXs) — *video* — WHOA!! Bodycam EXPOSES this "GOOD COP" as Being REALLY BAD after Walking Away from Auditor - YouTube — #YouTube
 ```
 
 ---
 
-### Clipboard Add
-```bash
-./curate.sh clip [tags...]
-```
-Requires `xclip`. Pulls URL from clipboard and adds it.
+## 🛠 Tips
 
----
-
-### Digest
-```bash
-./curate.sh digest [YYYY-MM] [--archive] [--hugo] [--hugo-section SECTION]
-```
-Creates monthly digests in `notes/`. Options:
-- `--archive` → move processed lines to `archive.tsv`.
-- `--hugo` → add YAML front matter for Hugo static sites.
-- `--hugo-section` → set section in Hugo front matter.
-
-Files generated:
-- `notes/news-YYYY-MM.md`
-- `notes/blogs-YYYY-MM.md`
-- `notes/videos-YYYY-MM.md`
-- `notes/links-YYYY-MM.md`
-- `notes/all-YYYY-MM.md`
-
----
-
-### Search
-```bash
-./curate.sh search PATTERN
-```
-Case-insensitive grep across inbox.
-
----
-
-### Rules
-```bash
-./curate.sh rules list
-./curate.sh rules add <domain> [type] [tags...]
-./curate.sh rules test <url>
-```
-- Rules auto-apply type and tags by domain suffix.
-- Example:
-  ```bash
-  ./curate.sh rules add reuters.com news finance wire
-  ./curate.sh add "https://www.reuters.com/article/xyz"
-  ```
-  → saved as type `news` with tags `finance wire`.
-
----
-
-### Import
-```bash
-./curate.sh import file.tsv|file.csv [--format tsv|csv|auto]
-```
-- Reads 5 columns: `date, type, url, title, tags`.
-- Fills missing fields (auto-type, today’s date).
-- Applies rules.
-
----
-
-### Export
-```bash
-./curate.sh export [YYYY-MM] > out.json
-```
-- Exports inbox (or given month) as JSON.
-
----
-
-### TUI (fzf)
-```bash
-./curate.sh tui
-```
-Requires `fzf`. Interactive menu for add/search/digest/rules.
-
----
-
-### Install Dependencies
-```bash
-./curate.sh install-deps
-```
-- Fedora/RHEL: `dnf install curl lynx xclip`
-- Debian/Ubuntu: `apt install curl lynx xclip`
-
----
-
-## 🛠 Maintenance Tips
-
-- **Deleting mistakes**: just edit `inbox.tsv` in `vim`/`emacs` and remove the line.
-- **Backup/versioning**:  
-  ```bash
-  git init
-  git add inbox.tsv rules.tsv notes/
-  git commit -m "curation updates"
-  ```
-- **Archiving**: run `digest --archive` monthly to keep `inbox.tsv` small.
-- **Cleaning rules**: edit `rules.tsv` if you need to fix or remove a rule (tab-separated fields).
-- **Tweaks**: adjust `templates/monthly_header.md` for headers/logos/boilerplate.
+- Keep edits to `inbox.tsv` simple—use **tabs** between the five columns.
+- Prefer tags that start with `#` (e.g. `#YouTube`). The CLI will add `#` automatically for `add`, but manual edits should include it too for clean rendering.
+- Customize `templates/header.md` to include any boilerplate or intro text.
 
 ---
 
 ## 💡 Philosophy
-- **Plain text first**: everything is TSV/Markdown.
-- **Low friction capture**: fastest possible `add` flow.
-- **Power in editors**: you can clean/rewrite with Vim/Emacs or any script.
-- **No lock-in**: easy to grep, sort, share, or publish.
+
+- **Plain text** first: portable, future‑proof.
+- **Fast capture**, low friction.
+- **Your editor is power**: use Vim/Emacs for batch refactors.
+- **No lock‑in**: TSV/Markdown are universal.
+
+
+---
+
+---
+
+## 🖥️ Cross‑platform builds
+
+`curate.cpp` is portable and builds on Linux, macOS, and Windows.
+
+### macOS
+
+**Dependencies**
+- Xcode Command Line Tools (Apple Clang) _or_ Homebrew GCC 12+
+
+**Install toolchain**
+```bash
+# Option A: Apple Clang (recommended)
+xcode-select --install
+
+# Option B: Homebrew GCC
+brew install gcc
+```
+
+**Build**
+```bash
+# Apple Clang
+clang++ -std=c++20 -O2 -o curate curate.cpp
+
+# Or Homebrew GCC (name may vary, e.g., g++-14)
+g++-14 -std=c++20 -O2 -o curate curate.cpp
+```
+
+> If you see a link error about `<filesystem>` on very old GCC, try adding `-lstdc++fs` (not needed on modern compilers).
+
+### Windows
+
+Two options: **MSVC (Visual Studio 2022 / Build Tools)** or **MSYS2 MinGW‑w64**.
+
+#### Option A: MSVC (Visual Studio)
+
+**Dependencies**
+- Microsoft C++ Build Tools or Visual Studio 2022 with C++ workload
+
+**Build (Developer Command Prompt)**
+```bat
+cl /std:c++20 /O2 /EHsc curate.cpp
+```
+Produces `curate.exe` in the current directory.
+
+> Note: The source includes a portable time shim that uses `localtime_s` on Windows and `localtime_r` elsewhere—no changes required.
+
+#### Option B: MSYS2 MinGW‑w64 (GNU toolchain)
+
+**Dependencies**
+- MSYS2 with MinGW‑w64 packages
+
+**Install toolchain**
+1. Install MSYS2 from https://www.msys2.org/
+2. Open the **MSYS2 MinGW x64** shell and run:
+   ```bash
+   pacman -S --needed mingw-w64-x86_64-gcc
+   ```
+
+**Build (in MinGW shell)**
+```bash
+g++ -std=c++20 -O2 -o curate.exe curate.cpp
+```
+> If `<filesystem>` link errors appear on older GCC, add `-lstdc++fs`:
+> ```bash
+> g++ -std=c++20 -O2 -o curate.exe curate.cpp -lstdc++fs
+> ```
+
+### WSL (Windows Subsystem for Linux)
+
+If you prefer Linux toolchains on Windows, use Ubuntu (or similar) in WSL:
+```bash
+sudo apt update && sudo apt install -y g++
+g++ -std=c++20 -O2 -o curate curate.cpp
+```
+
+---
+
+## 🔎 Verifying your build
+
+```bash
+./curate help
+./curate add "https://example.com" #Example
+./curate digest -gt
+```
+Check `./digests/` for the generated file.
+
+
+## 🔎 Verifying your build
+
+```bash
+./curate help
+./curate add "https://example.com" #Example
+./curate digest -gt
+```
+Check `./digests/` for the generated file.
